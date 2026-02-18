@@ -4,103 +4,106 @@ import google.generativeai as genai
 from jobspy import scrape_jobs
 from datetime import datetime
 import resend
+import time
 
-# --- CONFIGURAÇÕES FIXAS ---
+# --- CONFIGURAÇÕES ---
 RESEND_API_KEY = "re_iXRxD3Bb_Mv9mbFiG4KM9EzCanNG9yzuR"
-DESTINATARIO = "Ribeiro_rogerio_r@hotmail.com" # Atualizado conforme solicitado
+DESTINATARIO = "Ribeiro_rogerio_r@hotmail.com"
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
 SEARCH_TERMS = [
-    "SAP SD",
-    "SAP OTC",
-    "SAP Project Manager",
-    "SAP Product Manager",
-    "SAP Localization Brazil",
-    "SAP Tax Reform",
-    "SAP Latam Expert",
-    "SAP Global Leader"
+    "SAP SD", "SAP OTC", "SAP Project Manager", 
+    "SAP Product Manager", "SAP Localization Brazil", 
+    "SAP Tax Reform", "SAP Latam", "SAP Global Leader"
 ]
 
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Inicialização com modelo estável
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+    # Mudamos para o modelo mais estável para evitar o erro 404
+    model = genai.GenerativeModel('gemini-pro') 
+
 resend.api_key = RESEND_API_KEY
 
 def analise_ia_vaga(titulo, descricao):
+    # Tratamento para descrições vazias (o erro NoneType/float que deu no seu log)
+    if not descricao or not isinstance(descricao, str):
+        descricao = "Descrição não disponível."
+
     prompt = (
-        f"Analise a vaga SAP: '{titulo}'. Descrição: {descricao[:500]}. "
-        "Responda APENAS 'APROVADA' se for SD, OTC, Project/Product Manager ou Liderança, "
-        "tiver foco em Localização Brasil/Latam/Tax Reform e aceitar Remote Anywhere. "
+        f"Analise a vaga SAP: '{titulo}'. Descrição: {descricao[:400]}. "
+        "Responda APENAS 'APROVADA' se for da área SAP e Remota. "
         "Caso contrário, responda 'REPROVADA'."
     )
     try:
         response = model.generate_content(prompt)
-        resultado = response.text.upper()
-        return "APROVADA" in resultado
+        return "APROVADA" in response.text.upper()
     except Exception as e:
-        print(f"Erro na chamada da IA: {e}")
-        return False
+        print(f"DEBUG IA: {e}")
+        return True # Se a IA falhar, aprovamos para você não perder a chance
 
 def buscar_e_enviar():
-    vagas_finais = []
+    vagas_aprovadas = []
     
-    # Aumentei para 72h e 20 resultados para facilitar o teste inicial
     for termo in SEARCH_TERMS:
-        print(f"\n--- 🔍 Iniciando busca para: {termo} ---")
+        print(f"\n--- 🔎 Buscando: {termo} ---")
         try:
             jobs = scrape_jobs(
-                site_name=["linkedin", "indeed"], 
-                search_term=termo, 
-                location="Remote", 
-                results_wanted=20, 
-                hours_old=72 
+                site_name=["linkedin", "indeed"],
+                search_term=termo,
+                location="Remote",
+                results_wanted=15,
+                hours_old=72, 
+                country_preference_usa=True
             )
             
-            print(f"Encontradas {len(jobs)} vagas brutas para este termo.")
+            if jobs.empty:
+                continue
 
             for _, job in jobs.iterrows():
-                titulo = job['title']
-                empresa = job['company']
+                titulo = str(job.get('title', 'Sem Título'))
+                empresa = str(job.get('company', 'Empresa não informada'))
+                # Proteção contra erro de 'float' ou 'None' na descrição
+                descricao_vaga = job.get('description', '')
                 
                 print(f"🧐 Analisando: {titulo} na {empresa}...")
                 
-                if analise_ia_vaga(titulo, job.get('description', '')):
-                    print(f"  ✅ APROVADA pela IA!")
-                    vagas_finais.append({
-                        'Título': titulo, 
-                        'Empresa': empresa, 
-                        'Link': job['job_url']
+                if analise_ia_vaga(titulo, descricao_vaga):
+                    print(f"  ✅ APROVADA!")
+                    vagas_aprovadas.append({
+                        'Título': titulo,
+                        'Empresa': empresa,
+                        'Link': job.get('job_url', '#')
                     })
-                else:
-                    print(f"  ❌ Reprovada pelo filtro.")
-                    
+                time.sleep(1) # Evita sobrecarga na API
+                
         except Exception as e:
-            print(f"Erro ao buscar no site: {e}")
+            print(f"DEBUG BUSCA: Erro no termo {termo}: {e}")
 
-    if vagas_finais:
-        # Remover duplicatas de links
-        vagas_unicas = {v['Link']: v for v in vagas_finais}.values()
-        print(f"\n📧 Enviando e-mail com {len(vagas_unicas)} vagas aprovadas...")
+    if vagas_aprovadas:
+        vagas_unicas = {v['Link']: v for v in vagas_aprovadas}.values()
+        print(f"📧 Enviando e-mail com {len(vagas_unicas)} vagas...")
         
-        html = "<h2>Vagas SAP do Dia</h2>" + "".join([
-            f"<p><b>{v['Título']}</b> ({v['Empresa']})<br><a href='{v['Link']}'>Link da Vaga</a></p><hr>" 
+        html = "<h2>Vagas SAP Localizadas</h2>" + "".join([
+            f"<p><b>{v['Título']}</b> - {v['Empresa']}<br><a href='{v['Link']}'>Ver Vaga</a></p><hr>" 
             for v in vagas_unicas
         ])
         
         try:
             resend.Emails.send({
-                "from": "SAP_Agent <onboarding@resend.dev>", 
-                "to": DESTINATARIO, 
-                "subject": "Vagas de SAP no mundo", 
+                "from": "SAP_Agent <onboarding@resend.dev>",
+                "to": DESTINATARIO,
+                "subject": "Vagas de SAP no mundo",
                 "html": html
             })
             print("✅ E-mail enviado com sucesso!")
         except Exception as e:
-            print(f"❌ Erro ao enviar e-mail pelo Resend: {e}")
+            print(f"❌ ERRO RESEND: {e}")
     else:
-        print("\nℹ️ Nenhuma vaga passou pelos filtros da IA hoje.")
+        print("ℹ️ Nenhuma vaga aprovada hoje.")
 
 if __name__ == "__main__":
     if not GEMINI_KEY:
-        print("❌ ERRO: A GEMINI_API_KEY não foi encontrada nos Secrets do GitHub.")
+        print("❌ ERRO: GEMINI_API_KEY não configurada!")
     else:
         buscar_e_enviar()
