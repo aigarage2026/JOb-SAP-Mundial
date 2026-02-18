@@ -8,7 +8,7 @@ import time
 
 # --- CONFIGURAÇÕES ---
 RESEND_API_KEY = "re_iXRxD3Bb_Mv9mbFiG4KM9EzCanNG9yzuR"
-DESTINATARIO = "Ribeiro_rogerio_r@hotmail.com"
+DESTINATARIO = "aigarage2026@gmail.com"
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
 SEARCH_TERMS = [
