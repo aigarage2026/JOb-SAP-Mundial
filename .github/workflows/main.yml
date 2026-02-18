@@ -1,0 +1,17 @@
+name: SAP Agent Daily
+on:
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - run: pip install -r requirements.txt
+      - run: python script_sap.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
