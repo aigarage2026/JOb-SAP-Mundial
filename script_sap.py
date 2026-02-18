@@ -17,10 +17,8 @@ SEARCH_TERMS = [
     "SAP Tax Reform Remote", "SAP Latam Remote", "SAP Global Leader Remote"
 ]
 
-# Inicialização com o modelo mais recente e estável (Flash 1.5)
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
-    # Usando o nome completo do modelo para evitar o erro 404
     model = genai.GenerativeModel('gemini-1.5-flash-latest') 
 
 resend.api_key = RESEND_API_KEY
@@ -29,32 +27,40 @@ def analise_ia_vaga(titulo, descricao):
     if not descricao or not isinstance(descricao, str):
         descricao = "Descrição não disponível."
 
+    # PROMPT COM KILL SWITCH (REGRAS DE EXCLUSÃO)
     prompt = (
-        f"Analise a vaga SAP: '{titulo}'. Descrição: {descricao[:500]}. "
-        "Responda APENAS 'APROVADA' se a vaga parecer ser 100% REMOTA e da área SAP Funcional ou Gestão. "
-        "Se for híbrida ou presencial, responda 'REPROVADA'."
+        f"Analise a vaga SAP: '{titulo}'. Descrição: {descricao[:700]}. "
+        "REGRAS DE EXCLUSÃO (KILL SWITCH): "
+        "Responda 'REPROVADA' se a descrição mencionar: "
+        "- US Citizen Only ou US Citizenship required "
+        "- Green Card required / Permanent Resident "
+        "- No C2C / No Corp-to-Corp "
+        "- Must reside in the US / No offshore "
+        "- Modelo Híbrido ou Presencial. "
+        "\nCaso a vaga seja 100% REMOTA, aceite contractors globais e seja da área SAP, responda 'APROVADA'. "
+        "Responda APENAS 'APROVADA' ou 'REPROVADA'."
     )
+    
     try:
         response = model.generate_content(prompt)
-        # Se a resposta contiver APROVADA, retorna True
         return "APROVADA" in response.text.upper()
     except Exception as e:
-        print(f"⚠️ Alerta IA (Usando fallback): {e}")
-        # FALLBACK: Se a IA der erro, aprovamos a vaga por segurança para você não perdê-la
+        print(f"⚠️ Alerta IA: {e}")
+        # Em caso de erro técnico na IA, aprovamos para análise manual do usuário
         return True 
 
 def buscar_e_enviar():
     vagas_aprovadas = []
     
     for termo in SEARCH_TERMS:
-        print(f"\n--- 🔎 Buscando Remoto: {termo} ---")
+        print(f"\n--- 🔎 Buscando: {termo} ---")
         try:
             jobs = scrape_jobs(
                 site_name=["linkedin", "indeed"],
                 search_term=termo,
                 location="Remote",
                 is_remote=True,
-                results_wanted=15,
+                results_wanted=20,
                 hours_old=72, 
                 country_preference_usa=True
             )
@@ -77,7 +83,7 @@ def buscar_e_enviar():
                         'Link': job.get('job_url', '#')
                     })
                 else:
-                    print(f"  ❌ Reprovada pelo filtro (Provavelmente não é 100% remota).")
+                    print(f"  ❌ REPROVADA (Kill Switch: Restrição de Cidadania/Local/Vínculo).")
                 
                 time.sleep(1) 
                 
@@ -85,11 +91,11 @@ def buscar_e_enviar():
             print(f"❌ Erro na busca do termo {termo}: {e}")
 
     if vagas_aprovadas:
-        # Remover duplicatas de links
         vagas_unicas = {v['Link']: v for v in vagas_aprovadas}.values()
-        print(f"📧 Enviando e-mail com {len(vagas_unicas)} vagas aprovadas para {DESTINATARIO}...")
+        print(f"📧 Enviando e-mail com {len(vagas_unicas)} vagas filtradas...")
         
-        html = f"<h2>Relatório SAP Remote - {datetime.now().strftime('%d/%m/%Y')}</h2>"
+        html = f"<h2>Relatório SAP Global Remote - {datetime.now().strftime('%d/%m/%Y')}</h2>"
+        html += "<p style='color: gray;'>Filtros: Sem restrição de cidadania US, 100% Remoto, SAP Funcional/Gestão.</p><hr>"
         html += "".join([
             f"<div style='margin-bottom:15px;'><b>{v['Título']}</b> - {v['Empresa']}<br>"
             f"<a href='{v['Link']}'>Clique aqui para ver a vaga</a></div><hr>" 
@@ -100,14 +106,14 @@ def buscar_e_enviar():
             resend.Emails.send({
                 "from": "SAP_Agent <onboarding@resend.dev>",
                 "to": DESTINATARIO,
-                "subject": "🎯 Novas Vagas SAP 100% Remote",
+                "subject": "🎯 Vagas SAP (Global Remote Only)",
                 "html": html
             })
-            print("✅ SUCESSO: O e-mail foi enviado!")
+            print(f"✅ E-mail enviado com sucesso para {DESTINATARIO}!")
         except Exception as e:
             print(f"❌ ERRO NO RESEND: {e}")
     else:
-        print("ℹ️ Nenhuma vaga nova encontrada no período.")
+        print("ℹ️ Nenhuma vaga compatível com os critérios (Kill Switch ativado para a maioria).")
 
 if __name__ == "__main__":
     if not GEMINI_KEY:
