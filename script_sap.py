@@ -11,11 +11,14 @@ DESTINATARIO = "Ribeiro_rogerio_r@hotmail.com" # Atualizado conforme solicitado
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
 SEARCH_TERMS = [
-    "SAP SD OTC Remote Anywhere", 
-    "SAP Project Manager Brazil Localization",
-    "SAP Product Manager Tax Reform",
-    "SAP Latam Expert Remote Contractor",
-    "SAP Brazil Localization Global Leader"
+    "SAP SD",
+    "SAP OTC",
+    "SAP Project Manager",
+    "SAP Product Manager",
+    "SAP Localization Brazil",
+    "SAP Tax Reform",
+    "SAP Latam Expert",
+    "SAP Global Leader"
 ]
 
 genai.configure(api_key=GEMINI_KEY)
