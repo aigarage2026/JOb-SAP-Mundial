@@ -7,7 +7,7 @@ import resend
 
 # --- CONFIGURAÇÕES FIXAS ---
 RESEND_API_KEY = "re_iXRxD3Bb_Mv9mbFiG4KM9EzCanNG9yzuR"
-DESTINATARIO = "S_Gianisella@hotmail.com"
+DESTINATARIO = "Ribeiro_rogerio_r@hotmail.com"
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
 SEARCH_TERMS = [
